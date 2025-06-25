@@ -24,23 +24,24 @@ import {
 import { File, Download, Trash2, Calendar, HardDrive } from 'lucide-react';
 
 interface FileData {
-  id: number;
-  filename: string;
+  id: string;
+  name: string;
   size: number;
-  file_type: string;
-  upload_date: string;
-  file_hash: string;
-  download_url: string;
+  type: string;
+  hash: string;
+  storage_path: string;
+  created_at: string;
 }
 
 interface FileListProps {
   files: FileData[];
-  onDelete: (fileId: number) => void;
+  onDelete: (fileId: string) => void;
+  onDownload: (file: FileData) => void;
   onRefresh: () => void;
 }
 
-const FileList: React.FC<FileListProps> = ({ files, onDelete, onRefresh }) => {
-  const [deleteFileId, setDeleteFileId] = useState<number | null>(null);
+const FileList: React.FC<FileListProps> = ({ files, onDelete, onDownload, onRefresh }) => {
+  const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -68,31 +69,6 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete, onRefresh }) => {
     if (type.includes('pdf')) return 'bg-red-100 text-red-800';
     if (type.includes('text')) return 'bg-blue-100 text-blue-800';
     return 'bg-gray-100 text-gray-800';
-  };
-
-  const handleDownload = async (file: FileData) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/files/${file.id}/download/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    } catch (error) {
-      console.error('Download error:', error);
-    }
   };
 
   const handleDelete = () => {
@@ -132,16 +108,16 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete, onRefresh }) => {
                   <div className="flex items-center space-x-3">
                     <File className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="font-medium text-gray-900">{file.filename}</p>
+                      <p className="font-medium text-gray-900">{file.name}</p>
                       <p className="text-sm text-gray-500 font-mono">
-                        {file.file_hash.substring(0, 8)}...
+                        {file.hash.substring(0, 8)}...
                       </p>
                     </div>
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant="secondary" className={getFileTypeColor(file.file_type)}>
-                    {file.file_type}
+                  <Badge variant="secondary" className={getFileTypeColor(file.type)}>
+                    {file.type}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -153,7 +129,7 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete, onRefresh }) => {
                 <TableCell>
                   <div className="flex items-center space-x-2">
                     <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm">{formatDate(file.upload_date)}</span>
+                    <span className="text-sm">{formatDate(file.created_at)}</span>
                   </div>
                 </TableCell>
                 <TableCell>
@@ -161,7 +137,7 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete, onRefresh }) => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDownload(file)}
+                      onClick={() => onDownload(file)}
                       className="bg-blue-50 hover:bg-blue-100 border-blue-200"
                     >
                       <Download className="w-4 h-4" />
@@ -182,7 +158,7 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete, onRefresh }) => {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete File</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete "{file.filename}"? This action cannot be undone.
+                            Are you sure you want to delete "{file.name}"? This action cannot be undone.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

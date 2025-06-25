@@ -7,9 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, Shield, Database, Search } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AuthComponentProps {
-  onLogin: (token: string) => void;
+  onLogin: (user: any) => void;
 }
 
 const AuthComponent: React.FC<AuthComponentProps> = ({ onLogin }) => {
@@ -17,7 +18,7 @@ const AuthComponent: React.FC<AuthComponentProps> = ({ onLogin }) => {
   const { toast } = useToast();
 
   const [loginData, setLoginData] = useState({
-    username: '',
+    email: '',
     password: ''
   });
 
@@ -33,30 +34,29 @@ const AuthComponent: React.FC<AuthComponentProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(loginData)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginData.email,
+        password: loginData.password,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        onLogin(data.access_token);
-      } else {
+      if (error) {
         toast({
           title: "Login Failed",
-          description: data.message || "Invalid credentials",
+          description: error.message,
           variant: "destructive",
+        });
+      } else if (data.user) {
+        onLogin(data.user);
+        toast({
+          title: "Login Successful",
+          description: "Welcome back!",
         });
       }
     } catch (error) {
       console.error('Login error:', error);
       toast({
         title: "Login Failed",
-        description: "Network error. Please try again.",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     }
@@ -79,40 +79,37 @@ const AuthComponent: React.FC<AuthComponentProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/register/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: registerData.username,
-          email: registerData.email,
-          password: registerData.password
-        })
+      const { data, error } = await supabase.auth.signUp({
+        email: registerData.email,
+        password: registerData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            username: registerData.username,
+          }
+        }
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
+      if (error) {
+        toast({
+          title: "Registration Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
         toast({
           title: "Registration Successful",
-          description: "Account created! Please log in.",
+          description: "Please check your email to verify your account before logging in.",
         });
         // Switch to login tab
         const loginTab = document.querySelector('[data-value="login"]') as HTMLElement;
         loginTab?.click();
-      } else {
-        toast({
-          title: "Registration Failed",
-          description: data.message || "Failed to create account",
-          variant: "destructive",
-        });
       }
     } catch (error) {
       console.error('Registration error:', error);
       toast({
         title: "Registration Failed",
-        description: "Network error. Please try again.",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     }
@@ -149,7 +146,7 @@ const AuthComponent: React.FC<AuthComponentProps> = ({ onLogin }) => {
               <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/20">
                 <Shield className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
                 <h3 className="font-semibold text-gray-900">Secure</h3>
-                <p className="text-sm text-gray-600">JWT authentication</p>
+                <p className="text-sm text-gray-600">Supabase authentication</p>
               </div>
               
               <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/20">
@@ -180,13 +177,13 @@ const AuthComponent: React.FC<AuthComponentProps> = ({ onLogin }) => {
                 <TabsContent value="login" className="space-y-4">
                   <form onSubmit={handleLogin} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
+                      <Label htmlFor="email">Email</Label>
                       <Input
-                        id="username"
-                        type="text"
-                        placeholder="Enter your username"
-                        value={loginData.username}
-                        onChange={(e) => setLoginData({...loginData, username: e.target.value})}
+                        id="email"
+                        type="email"
+                        placeholder="Enter your email"
+                        value={loginData.email}
+                        onChange={(e) => setLoginData({...loginData, email: e.target.value})}
                         required
                       />
                     </div>
@@ -221,9 +218,9 @@ const AuthComponent: React.FC<AuthComponentProps> = ({ onLogin }) => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
+                      <Label htmlFor="reg-email">Email</Label>
                       <Input
-                        id="email"
+                        id="reg-email"
                         type="email"
                         placeholder="Enter your email"
                         value={registerData.email}

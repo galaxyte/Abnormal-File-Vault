@@ -1,240 +1,327 @@
 
-# Abnormal File Vault 🔐
+# 🔐 Abnormal File Vault
 
 A production-grade file hosting application with smart deduplication, secure authentication, and advanced search capabilities.
 
-## 🚀 Features
+## ✨ Features
 
-- **Secure Authentication**: JWT-based authentication with Django REST Framework
-- **Smart File Deduplication**: Automatic duplicate detection using SHA256 hashing
-- **Advanced Search**: Filter by filename, type, date, and owner
-- **File Management**: Upload, download, and delete files with ease
-- **Responsive UI**: Modern React frontend with Tailwind CSS
-- **Production Ready**: Dockerized with PostgreSQL and Nginx
+- **🔐 Secure Authentication**: Email/password authentication with Supabase
+- **📁 File Upload & Management**: Drag-and-drop file uploads with real-time progress
+- **🚀 Smart Deduplication**: Automatic duplicate detection using SHA256 hashing
+- **🔍 Advanced Search**: Search by filename, type, and upload date
+- **📊 Analytics Dashboard**: File statistics and storage insights
+- **🎨 Modern UI**: Responsive design with Tailwind CSS and shadcn/ui
+- **☁️ Cloud Storage**: Secure file storage with Supabase Storage
+- **🔒 Row Level Security**: Database-level security policies
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React, TypeScript, Tailwind CSS, shadcn/ui
-- **Backend**: Django REST Framework, PostgreSQL
-- **DevOps**: Docker, Docker Compose, Nginx
-- **Authentication**: JWT tokens with refresh mechanism
-
-## 🏗️ Architecture
-
-```
-Frontend (React) ↔ Nginx ↔ Django REST API ↔ PostgreSQL
-                                    ↓
-                               File Storage
-```
+- **Frontend**: React 18, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend**: Supabase (PostgreSQL, Authentication, Storage)
+- **Build Tool**: Vite
+- **Package Manager**: Bun
+- **Deployment**: Lovable (or any static hosting)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
-- Git
 
-### Installation
+- Node.js 16+ or Bun
+- A Supabase account
 
-1. **Clone the repository**
+### 1. Clone the Repository
+
 ```bash
-git clone <repository-url>
+git clone https://github.com/yourusername/abnormal-file-vault.git
 cd abnormal-file-vault
 ```
 
-2. **Start the application**
+### 2. Install Dependencies
+
 ```bash
-docker-compose up --build
-```
+# Using Bun (recommended)
+bun install
 
-3. **Access the application**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- Admin Panel: http://localhost:8000/admin
-
-### Development Setup
-
-1. **Backend Setup**
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-2. **Database Setup**
-```bash
-python manage.py makemigrations
-python manage.py migrate
-python manage.py createsuperuser
-```
-
-3. **Frontend Setup**
-```bash
+# Or using npm
 npm install
+```
+
+### 3. Set Up Supabase
+
+1. **Create a new Supabase project** at [supabase.com](https://supabase.com)
+
+2. **Configure the database** by running the following SQL in your Supabase SQL Editor:
+
+```sql
+-- Create profiles table
+CREATE TABLE public.profiles (
+  id UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
+  username TEXT UNIQUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (id)
+);
+
+-- Create files table
+CREATE TABLE public.files (
+  id UUID NOT NULL DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  size BIGINT NOT NULL,
+  type TEXT NOT NULL,
+  hash TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
+  storage_path TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (id)
+);
+
+-- Enable Row Level Security
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.files ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies
+CREATE POLICY "Users can view own profile" ON public.profiles
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert own profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Users can view own files" ON public.files
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own files" ON public.files
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own files" ON public.files  
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own files" ON public.files
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Create storage bucket
+INSERT INTO storage.buckets (id, name, public) VALUES ('files', 'files', false);
+
+-- Create storage policies
+CREATE POLICY "Users can upload own files" ON storage.objects
+  FOR INSERT WITH CHECK (auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Users can view own files" ON storage.objects
+  FOR SELECT USING (auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Users can delete own files" ON storage.objects
+  FOR DELETE USING (auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Create function to handle new users
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, username)
+  VALUES (new.id, new.raw_user_meta_data->>'username');
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger for new users
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+```
+
+3. **Update your Supabase configuration** in `src/integrations/supabase/client.ts`:
+   - Replace the URL and anon key with your project's credentials
+
+4. **Configure Authentication URLs** in your Supabase dashboard:
+   - Go to Authentication > URL Configuration
+   - Set Site URL to your app's URL
+   - Add your app's URL to Redirect URLs
+
+### 4. Run the Development Server
+
+```bash
+# Using Bun
+bun run dev
+
+# Or using npm
 npm run dev
 ```
 
-## 📝 API Documentation
+The app will be available at `http://localhost:8080`
 
-### Authentication Endpoints
-- `POST /api/auth/register/` - User registration
-- `POST /api/auth/login/` - User login
-- `POST /api/auth/verify/` - Token verification
-- `GET /api/auth/profile/` - User profile
+## 📖 Usage Guide
 
-### File Endpoints
-- `GET /api/files/` - List user files
-- `POST /api/files/upload/` - Upload file
-- `GET /api/files/{id}/download/` - Download file
-- `DELETE /api/files/{id}/` - Delete file
-- `GET /api/files/search/` - Search files
+### 1. **Sign Up / Login**
+- Create a new account or login with existing credentials
+- Email verification is required for new accounts
 
-## 🔐 Security Features
+### 2. **Upload Files**
+- Click "Upload Files" button
+- Drag and drop files or click to browse
+- Files are automatically deduplicated using SHA256 hashes
+- Real-time upload progress is displayed
 
-- JWT authentication with refresh tokens
-- File access control per user
-- CORS protection
-- Input validation and sanitization
-- Secure file upload handling
+### 3. **Manage Files**
+- View all your uploaded files in the dashboard
+- Search files by name or type
+- Download files by clicking the download button
+- Delete files with confirmation dialog
 
-## 📊 File Deduplication
+### 4. **File Deduplication**
+- Duplicate files are automatically detected
+- Only one copy is stored, saving storage space
+- Each user maintains their own file list
 
-The system uses SHA256 hashing to identify duplicate files:
-- Files with identical content share the same storage
-- Each user maintains their own file references
-- Deleting a file only removes it from storage when no other users reference it
+## 🏗️ Architecture
 
-## 🐳 Docker Configuration
+### Database Schema
 
-### Services
-- **db**: PostgreSQL database
-- **backend**: Django REST API
-- **frontend**: React app served by Nginx
+```
+profiles
+├── id (UUID, references auth.users)
+├── username (TEXT, unique)
+├── created_at (TIMESTAMP)
+└── updated_at (TIMESTAMP)
 
-### Volumes
-- `postgres_data`: Database persistence
-- `media_files`: File storage persistence
+files
+├── id (UUID, primary key)
+├── name (TEXT)
+├── size (BIGINT)
+├── type (TEXT)
+├── hash (TEXT, for deduplication)
+├── user_id (UUID, references auth.users)
+├── storage_path (TEXT)
+└── created_at (TIMESTAMP)
+```
+
+### File Deduplication Logic
+
+1. When a file is uploaded, calculate SHA256 hash
+2. Check if hash already exists in database
+3. If exists: Create new file record pointing to existing storage
+4. If new: Upload to storage and create new file record
+
+### Security
+
+- **Row Level Security (RLS)**: Users can only access their own data
+- **Authentication**: Supabase handles secure authentication
+- **File Storage**: Secure file storage with access controls
+- **Input Validation**: Client and server-side validation
+
+## 🚀 Deployment
+
+### Deploy to Vercel
+
+1. **Push to GitHub**:
+```bash
+git add .
+git commit -m "Initial commit"
+git push origin main
+```
+
+2. **Deploy to Vercel**:
+   - Go to [vercel.com](https://vercel.com)
+   - Import your GitHub repository
+   - Set build command to `bun run build`
+   - Deploy
+
+3. **Update Supabase URLs**:
+   - Add your Vercel URL to Supabase Authentication URLs
+   - Update redirect URLs in Supabase dashboard
+
+### Deploy to Netlify
+
+1. **Build the project**:
+```bash
+bun run build
+```
+
+2. **Deploy to Netlify**:
+   - Drag and drop the `dist` folder to Netlify
+   - Or connect your GitHub repository
+   - Set build command to `bun run build`
+   - Set publish directory to `dist`
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-Create a `.env` file in the backend directory:
+The app uses Supabase configuration from `src/integrations/supabase/client.ts`. Update the following:
 
-```env
-SECRET_KEY=your-secret-key-here
-DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
-DB_NAME=file_vault
-DB_USER=postgres
-DB_PASSWORD=your-secure-password
-DB_HOST=db
-DB_PORT=5432
+```typescript
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_PUBLISHABLE_KEY = "YOUR_SUPABASE_ANON_KEY";
 ```
 
-### File Upload Limits
-- Maximum file size: 100MB
-- Supported formats: All file types
-- Storage: Organized by file hash for deduplication
+### Supabase Configuration
 
-## 🚀 Deployment
+1. **Authentication**:
+   - Enable Email authentication
+   - Configure email templates
+   - Set up redirect URLs
 
-### Production Deployment
+2. **Storage**:
+   - Create 'files' bucket
+   - Configure storage policies
+   - Set up file size limits
 
-1. **Update environment variables**
-```bash
-cp backend/.env.example backend/.env
-# Edit .env with production values
-```
+3. **Database**:
+   - Run the provided SQL migrations
+   - Set up RLS policies
+   - Configure database backups
 
-2. **Deploy with Docker Compose**
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
+## 🔍 Troubleshooting
 
-3. **Run database migrations**
-```bash
-docker-compose exec backend python manage.py migrate
-```
+### Common Issues
 
-## 📈 Performance Optimizations
+1. **"User not found" error**:
+   - Ensure user is authenticated
+   - Check RLS policies are correctly configured
 
-- Database indexing on file hashes and user relationships
-- Efficient file deduplication algorithm
-- Pagination for large file lists
-- Optimized Docker images with multi-stage builds
-- Nginx reverse proxy for static file serving
+2. **File upload fails**:
+   - Check storage bucket exists
+   - Verify storage policies are set up
+   - Ensure file size is within limits
 
-## 🧪 Testing
+3. **Authentication not working**:
+   - Verify Supabase URLs are correct
+   - Check authentication settings
+   - Ensure redirect URLs are configured
 
-```bash
-# Backend tests
-cd backend
-python manage.py test
+### Debug Mode
 
-# Frontend tests
-npm test
+Enable debug mode by adding this to your browser console:
+```javascript
+localStorage.setItem('debug', 'supabase:*');
 ```
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🐛 Troubleshooting
+## 🙏 Acknowledgments
 
-### Common Issues
-
-1. **Database Connection Error**
-   - Ensure PostgreSQL is running
-   - Check database credentials in .env
-
-2. **File Upload Fails**
-   - Check file size limits
-   - Verify media directory permissions
-
-3. **Frontend Can't Connect to API**
-   - Ensure backend is running on port 8000
-   - Check CORS settings
-
-### Logs
-
-```bash
-# View all logs
-docker-compose logs
-
-# View specific service logs
-docker-compose logs backend
-docker-compose logs frontend
-docker-compose logs db
-```
-
-## 🔄 Backup and Restore
-
-### Database Backup
-```bash
-docker-compose exec db pg_dump -U postgres file_vault > backup.sql
-```
-
-### Database Restore
-```bash
-docker-compose exec -T db psql -U postgres file_vault < backup.sql
-```
+- [Supabase](https://supabase.com) for the backend infrastructure
+- [shadcn/ui](https://ui.shadcn.com) for the UI components
+- [Tailwind CSS](https://tailwindcss.com) for styling
+- [Lucide React](https://lucide.dev) for icons
 
 ## 📞 Support
 
-For support and questions:
-- Create an issue on GitHub
-- Check the documentation
-- Review the troubleshooting guide
+If you have any questions or need help, please:
+1. Check the troubleshooting section
+2. Open an issue on GitHub
+3. Contact the maintainers
 
 ---
 
-Built with ❤️ using Django, React, and Docker
+**Happy file hosting! 🚀**

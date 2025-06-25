@@ -7,19 +7,20 @@ import { useToast } from '@/hooks/use-toast';
 import FileUpload from '@/components/FileUpload';
 import FileList from '@/components/FileList';
 import { Upload, Search, LogOut, User, File } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DashboardProps {
   onLogout: () => void;
 }
 
 interface FileData {
-  id: number;
-  filename: string;
+  id: string;
+  name: string;
   size: number;
-  file_type: string;
-  upload_date: string;
-  file_hash: string;
-  download_url: string;
+  type: string;
+  hash: string;
+  storage_path: string;
+  created_at: string;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
@@ -27,30 +28,49 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
+    fetchUserProfile();
     fetchFiles();
   }, []);
 
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(profile);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
   const fetchFiles = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/files/', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (response.ok) {
-        const data = await response.json();
-        setFiles(data.results || data);
-      } else {
+      const { data, error } = await supabase
+        .from('files')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
         toast({
           title: "Error",
           description: "Failed to fetch files",
           variant: "destructive",
         });
+      } else {
+        setFiles(data || []);
       }
     } catch (error) {
       console.error('Fetch files error:', error);
@@ -68,31 +88,28 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     setUploadModalOpen(false);
     toast({
       title: "Upload Successful",
-      description: `${newFile.filename} has been uploaded successfully.`,
+      description: `${newFile.name} has been uploaded successfully.`,
     });
   };
 
-  const handleFileDelete = async (fileId: number) => {
+  const handleFileDelete = async (fileId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/files/${fileId}/`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const { error } = await supabase
+        .from('files')
+        .delete()
+        .eq('id', fileId);
 
-      if (response.ok) {
-        setFiles(prev => prev.filter(file => file.id !== fileId));
-        toast({
-          title: "File Deleted",
-          description: "File has been successfully deleted.",
-        });
-      } else {
+      if (error) {
         toast({
           title: "Error",
           description: "Failed to delete file",
           variant: "destructive",
+        });
+      } else {
+        setFiles(prev => prev.filter(file => file.id !== fileId));
+        toast({
+          title: "File Deleted",
+          description: "File has been successfully deleted.",
         });
       }
     } catch (error) {
@@ -105,9 +122,48 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     }
   };
 
+  const handleFileDownload = async (file: FileData) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('files')
+        .download(file.storage_path);
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to download file",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Create download link
+      const url = window.URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast({
+        title: "Error",
+        description: "Network error while downloading file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    onLogout();
+  };
+
   const filteredFiles = files.filter(file =>
-    file.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    file.file_type.toLowerCase().includes(searchTerm.toLowerCase())
+    file.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    file.type.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
@@ -133,9 +189,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             <div className="flex items-center space-x-4">
               <div className="flex items-center text-sm text-gray-600">
                 <User className="w-4 h-4 mr-1" />
-                <span>Welcome back!</span>
+                <span>Welcome, {userProfile?.username || 'User'}!</span>
               </div>
-              <Button variant="outline" onClick={onLogout} size="sm">
+              <Button variant="outline" onClick={handleLogout} size="sm">
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
               </Button>
@@ -209,6 +265,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               <FileList 
                 files={filteredFiles} 
                 onDelete={handleFileDelete}
+                onDownload={handleFileDownload}
                 onRefresh={fetchFiles}
               />
             )}

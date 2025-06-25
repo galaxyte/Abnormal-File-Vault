@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, File, AlertCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface FileUploadProps {
   onFileUploaded: (file: any) => void;
@@ -43,31 +44,72 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUploaded, onClose }) => {
     }
   };
 
+  const calculateHash = async (file: File): Promise<string> => {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
   const uploadFile = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
 
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/files/upload/', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
+    // Calculate file hash for deduplication
+    const hash = await calculateHash(file);
+    
+    // Check if file already exists for this user
+    const { data: existingFile } = await supabase
+      .from('files')
+      .select('*')
+      .eq('hash', hash)
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-      if (response.ok) {
-        const data = await response.json();
-        return data;
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Upload failed');
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
+    if (existingFile) {
+      throw new Error('File already exists in your vault');
     }
+
+    // Check if file exists globally (for deduplication)
+    const { data: globalFile } = await supabase
+      .from('files')
+      .select('*')
+      .eq('hash', hash)
+      .limit(1)
+      .maybeSingle();
+
+    let storagePath;
+    
+    if (globalFile) {
+      // File exists globally, reuse storage path
+      storagePath = globalFile.storage_path;
+    } else {
+      // Upload new file to storage
+      const fileName = `${user.id}/${hash}-${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('files')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+      storagePath = fileName;
+    }
+
+    // Create file record for this user
+    const { data: newFileRecord, error: dbError } = await supabase
+      .from('files')
+      .insert({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        hash: hash,
+        user_id: user.id,
+        storage_path: storagePath
+      })
+      .select()
+      .single();
+
+    if (dbError) throw dbError;
+    return newFileRecord;
   };
 
   const handleUpload = async () => {
@@ -79,8 +121,20 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUploaded, onClose }) => {
     try {
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
-        const uploadedFile = await uploadFile(file);
-        onFileUploaded(uploadedFile);
+        try {
+          const uploadedFile = await uploadFile(file);
+          onFileUploaded(uploadedFile);
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('already exists')) {
+            toast({
+              title: "File Already Exists",
+              description: `${file.name} is already in your vault.`,
+              variant: "destructive",
+            });
+          } else {
+            throw error;
+          }
+        }
         
         // Update progress
         setUploadProgress(((i + 1) / selectedFiles.length) * 100);
@@ -88,11 +142,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUploaded, onClose }) => {
 
       toast({
         title: "Upload Complete",
-        description: `${selectedFiles.length} file(s) uploaded successfully.`,
+        description: `Files processed successfully.`,
       });
       
       onClose();
     } catch (error) {
+      console.error('Upload error:', error);
       toast({
         title: "Upload Failed",
         description: error instanceof Error ? error.message : "An error occurred during upload",

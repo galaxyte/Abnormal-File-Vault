@@ -3,50 +3,34 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import AuthComponent from '@/components/AuthComponent';
 import Dashboard from '@/components/Dashboard';
+import { supabase } from '@/integrations/supabase/client';
+import type { User } from '@supabase/supabase-js';
 
 const Index = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check for existing JWT token
-    const token = localStorage.getItem('token');
-    if (token) {
-      // Verify token validity
-      verifyToken(token);
-    } else {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       setLoading(false);
-    }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const verifyToken = async (token: string) => {
-    try {
-      const response = await fetch('/api/auth/verify/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.ok) {
-        setIsAuthenticated(true);
-      } else {
-        localStorage.removeItem('token');
-        setIsAuthenticated(false);
-      }
-    } catch (error) {
-      console.error('Token verification failed:', error);
-      localStorage.removeItem('token');
-      setIsAuthenticated(false);
-    }
-    setLoading(false);
-  };
-
-  const handleLogin = (token: string) => {
-    localStorage.setItem('token', token);
-    setIsAuthenticated(true);
+  const handleLogin = (user: User) => {
+    setUser(user);
     toast({
       title: "Login Successful",
       description: "Welcome to Abnormal File Vault!",
@@ -54,8 +38,7 @@ const Index = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    setIsAuthenticated(false);
+    setUser(null);
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out.",
@@ -75,7 +58,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      {!isAuthenticated ? (
+      {!user ? (
         <AuthComponent onLogin={handleLogin} />
       ) : (
         <Dashboard onLogout={handleLogout} />
