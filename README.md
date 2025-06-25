@@ -209,41 +209,7 @@ files
 - **File Storage**: Secure file storage with access controls
 - **Input Validation**: Client and server-side validation
 
-## 🚀 Deployment
 
-### Deploy to Vercel
-
-1. **Push to GitHub**:
-```bash
-git add .
-git commit -m "Initial commit"
-git push origin main
-```
-
-2. **Deploy to Vercel**:
-   - Go to [vercel.com](https://vercel.com)
-   - Import your GitHub repository
-   - Set build command to `bun run build`
-   - Deploy
-
-3. **Update Supabase URLs**:
-   - Add your Vercel URL to Supabase Authentication URLs
-   - Update redirect URLs in Supabase dashboard
-
-### Deploy to Netlify
-
-1. **Build the project**:
-```bash
-bun run build
-```
-
-2. **Deploy to Netlify**:
-   - Drag and drop the `dist` folder to Netlify
-   - Or connect your GitHub repository
-   - Set build command to `bun run build`
-   - Set publish directory to `dist`
-
-## 🔧 Configuration
 
 ### Environment Variables
 
@@ -304,24 +270,6 @@ localStorage.setItem('debug', 'supabase:*');
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Supabase](https://supabase.com) for the backend infrastructure
-- [shadcn/ui](https://ui.shadcn.com) for the UI components
-- [Tailwind CSS](https://tailwindcss.com) for styling
-- [Lucide React](https://lucide.dev) for icons
-
-## 📞 Support
-
-If you have any questions or need help, please:
-1. Check the troubleshooting section
-2. Open an issue on GitHub
-3. Contact the maintainers
-
----
 
 **Happy file hosting! 🚀**
